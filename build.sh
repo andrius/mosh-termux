@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
-# Build a patched mosh-client. Run this ON the Termux device.
+# Build a patched mosh-client.
 #
 #   bash build.sh            # build only
-#   bash build.sh --install  # build, then replace $PREFIX/bin/mosh-client
+#   bash build.sh --install  # build, then replace the installed mosh-client
 #
+# Runs both on a Termux device and on an ordinary Linux box. On Termux it
+# installs its own build dependencies; elsewhere it expects them to be present,
+# which is what the CI behaviour check relies on.
 set -euo pipefail
 
 VERSION=1.4.0
@@ -15,9 +18,15 @@ here=$(cd "$(dirname "$0")" && pwd)
 work=${WORK:-$HOME/.cache/mosh-termux}
 mkdir -p "$work"
 
-echo "==> dependencies"
-pkg install -y build-essential autoconf automake libtool pkg-config \
-    protobuf openssl ncurses abseil-cpp perl >/dev/null
+if command -v pkg >/dev/null 2>&1 && [ -n "${PREFIX:-}" ]; then
+    termux=yes
+    echo "==> dependencies (Termux)"
+    pkg install -y build-essential autoconf automake libtool pkg-config \
+        protobuf openssl ncurses abseil-cpp perl >/dev/null
+else
+    termux=no
+    echo "==> not Termux, assuming build dependencies are installed"
+fi
 
 cd "$work"
 [ -f "$TARBALL" ] || curl -LfsS -o "$TARBALL" "$URL"
@@ -32,13 +41,17 @@ cd "mosh-${VERSION}"
 echo "==> configure"
 # -std=c++17 matches what the Termux mosh package uses: abseil, pulled in as a
 # protobuf dependency, does not build as C++11.
-./configure --prefix="$PREFIX" CXXFLAGS="-std=c++17 -O2" >/dev/null
+./configure --prefix="${PREFIX:-/usr/local}" CXXFLAGS="-std=c++17 -O2" >/dev/null
 echo "==> make"
 make -j"$(nproc)" >/dev/null
 built="$PWD/src/frontend/mosh-client"
 echo "built: $built"
 
 if [ "${1:-}" = "--install" ]; then
+    if [ "$termux" != yes ]; then
+        echo "--install is for Termux devices only; the binary is at $built" >&2
+        exit 1
+    fi
     echo "==> installing"
     [ -f "$PREFIX/bin/mosh-client.orig" ] || cp -a "$PREFIX/bin/mosh-client" "$PREFIX/bin/mosh-client.orig"
     install -m 0755 "$built" "$PREFIX/bin/mosh-client"

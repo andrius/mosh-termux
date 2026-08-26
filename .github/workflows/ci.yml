@@ -1,0 +1,134 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  patch-applies:
+    name: patch applies to upstream
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: fetch and verify the upstream tarball
+        run: |
+          curl -LfsS -o mosh.tar.gz \
+            https://github.com/mobile-shell/mosh/releases/download/mosh-1.4.0/mosh-1.4.0.tar.gz
+          echo "872e4b134e5df29c8933dff12350785054d2fd2839b5ae6b5587b14db1465ddd  mosh.tar.gz" | sha256sum -c -
+          tar xf mosh.tar.gz
+      - name: dry-run the patch
+        run: patch -p1 --dry-run -d mosh-1.4.0 < patches/0001-terminaldisplay-replay-nested-mouse-modes.patch
+
+  behaviour:
+    name: stock fails, patched passes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            mosh build-essential pkg-config protobuf-compiler libprotobuf-dev \
+            libssl-dev libncurses-dev zlib1g-dev tmux
+
+      # verify.sh drives a real mosh-client, so it needs a pty with a nonzero
+      # size. A CI runner has no tty at all; tmux gives it one.
+      - name: stock mosh-client must FAIL
+        run: |
+          tmux new-session -d -x 80 -y 24 \
+            'bash verify.sh mosh-client > /tmp/stock.txt 2>&1; echo $? > /tmp/stock.rc'
+          for _ in $(seq 60); do [ -f /tmp/stock.rc ] && break; sleep 1; done
+          cat /tmp/stock.txt
+          grep -q FAIL /tmp/stock.txt
+
+      - name: build the patched client
+        run: bash build.sh
+
+      - name: patched mosh-client must PASS
+        run: |
+          BIN="$HOME/.cache/mosh-termux/mosh-1.4.0/src/frontend/mosh-client"
+          tmux new-session -d -x 80 -y 24 \
+            "bash verify.sh $BIN > /tmp/patched.txt 2>&1; echo \$? > /tmp/patched.rc"
+          for _ in $(seq 60); do [ -f /tmp/patched.rc ] && break; sleep 1; done
+          cat /tmp/patched.txt
+          grep -q PASS /tmp/patched.txt
+
+  packages:
+    name: deb (${{ matrix.arch }})
+    # Heavy: pulls the Termux builder image. Only on demand and on tags.
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    needs: [patch-applies]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [aarch64, arm, x86_64, i686]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: termux/termux-packages
+          path: termux-packages
+          fetch-depth: 1
+
+      # termux_step_patch_package applies every *.patch in the package
+      # directory, so dropping ours in is the whole integration.
+      - name: graft the patch into the mosh package
+        run: |
+          cp patches/*.patch termux-packages/packages/mosh/
+          ls -1 termux-packages/packages/mosh/
+
+      - name: build
+        working-directory: termux-packages
+        run: ./scripts/run-docker.sh ./build-package.sh -a ${{ matrix.arch }} -I mosh
+
+      - name: name the artifacts
+        run: |
+          mkdir -p debs
+          find termux-packages/output -name "*.deb" -exec cp {} debs/ \;
+          ls -l debs/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deb-${{ matrix.arch }}
+          path: debs/*.deb
+          if-no-files-found: error
+
+  release:
+    name: publish release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [behaviour, packages]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: deb-*
+          path: debs
+          merge-multiple: true
+      - name: publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ls -l debs/
+          gh release create "${GITHUB_REF_NAME}" debs/*.deb \
+            --title "${GITHUB_REF_NAME}" \
+            --notes "Patched mosh for Termux: restores mouse reporting for crossterm TUIs.
+
+          Install on the device:
+
+              pkg install ./mosh_*_\$(dpkg --print-architecture).deb
+              apt-mark hold mosh
+
+          Then prove it from a real Termux session with \`bash verify.sh\`, which
+          must print \`1000h 1002h 1003h 1006h\` and PASS.
+
+          See README.md for what the patch does and why. Upstream: mosh#1364."

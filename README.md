@@ -1,5 +1,7 @@
 # mosh-termux
 
+[![ci](https://github.com/andrius/mosh-termux/actions/workflows/ci.yml/badge.svg)](https://github.com/andrius/mosh-termux/actions/workflows/ci.yml)
+
 A one-hunk patch to `mosh-client` that restores mouse support for
 crossterm-based TUIs - zellij, gitui, bottom, and most Rust terminal apps -
 when mosh is used from Termux on Android.
@@ -109,7 +111,24 @@ The collapse happens on the server, but the information is recoverable on the
 client, so **only the phone needs the patched binary**. Servers keep stock
 `mosh-server`, the wire format is untouched, and there is no version skew.
 
-## Build and install
+## Install a prebuilt package
+
+Releases carry a full `mosh` `.deb` for every Termux architecture, built by CI
+in the official Termux builder image, so nothing has to be compiled on the
+phone:
+
+```bash
+# on the device
+dpkg --print-architecture                       # aarch64, arm, x86_64 or i686
+curl -LO https://github.com/andrius/mosh-termux/releases/latest/download/mosh_1.4.0-17_aarch64.deb
+pkg install ./mosh_1.4.0-17_aarch64.deb
+apt-mark hold mosh
+```
+
+The package keeps the upstream version string, so the hold is what stops a
+later `pkg upgrade` from putting the stock build back.
+
+## Build it yourself
 
 On the device:
 
