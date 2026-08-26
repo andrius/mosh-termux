@@ -121,12 +121,16 @@ phone:
 # on the device
 dpkg --print-architecture                       # aarch64, arm, x86_64 or i686
 curl -LO https://github.com/andrius/mosh-termux/releases/latest/download/mosh_1.4.0-17_aarch64.deb
-pkg install ./mosh_1.4.0-17_aarch64.deb
+apt-mark unhold mosh 2>/dev/null || true
+dpkg -i ./mosh_1.4.0-17_aarch64.deb
 apt-mark hold mosh
 ```
 
-The package keeps the upstream version string, so the hold is what stops a
-later `pkg upgrade` from putting the stock build back.
+The package deliberately keeps the upstream version string, so apt sees no
+version bump: use `dpkg -i`, not `pkg install`, and let the hold stop a later
+`pkg upgrade` from putting the stock build back. `mosh-perl_*.deb` in the same
+release is the optional perl `mosh` wrapper; you only need it if you already
+had `mosh-perl` installed.
 
 ## Build it yourself
 

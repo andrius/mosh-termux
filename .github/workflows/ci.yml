@@ -123,9 +123,11 @@ jobs:
             --title "${GITHUB_REF_NAME}" \
             --notes "Patched mosh for Termux: restores mouse reporting for crossterm TUIs.
 
-          Install on the device:
+          Install on the device (dpkg, not pkg: the version string is unchanged
+          on purpose, so apt sees nothing to upgrade):
 
-              pkg install ./mosh_*_\$(dpkg --print-architecture).deb
+              apt-mark unhold mosh 2>/dev/null || true
+              dpkg -i ./mosh_1.4.0-17_\$(dpkg --print-architecture).deb
               apt-mark hold mosh
 
           Then prove it from a real Termux session with \`bash verify.sh\`, which
