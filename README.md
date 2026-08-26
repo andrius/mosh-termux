@@ -127,6 +127,19 @@ The collapse happens on the server, but the information is recoverable on the
 client, so **only the phone needs the patched binary**. Servers keep stock
 `mosh-server`, the wire format is untouched, and there is no version skew.
 
+Dropping the explicit disable is a tidy-up, not a second fix. It is what killed a
+running session in unpatched mosh, but once the ladder is in place the disable is
+merely redundant: it is emitted first and the ladder immediately re-establishes
+state from the bottom.
+
+### Relationship to upstream
+
+[mosh#1405](https://github.com/mobile-shell/mosh/pull/1405), open since
+2026-08-22, fixes this the same way - it announces the lower modes alongside the
+stored one and keeps the disable. Its thresholds differ from this patch only for
+mode 1001, which nothing uses. When it lands and reaches Termux, this repository
+has no reason to exist; until then it is the same fix, shipped.
+
 ## Install from the apt repository
 
 CI builds a real `mosh` package for every Termux architecture in the official

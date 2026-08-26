@@ -15,11 +15,13 @@ Emitting the ladder weakest-first restores the fallback. 1000/1002/1003 share
 a single variable in xterm just as they do in mosh, so the last one still wins
 and conformant terminals see no change in behaviour.
 
-Dropping the explicit disable of the previous mode is part of the fix, not a
-simplification: on a mode change mosh sent e.g. "\\033[?1002l\\033[?1003h",
-which turned a working session mouse off mid-flight on any terminal without
-1003. The ladder re-establishes state from the bottom on every change, so the
-disable is redundant.
+The explicit disable of the previous mode is what broke a *running* session in
+unpatched mosh: on a mode change it sent e.g. "\\033[?1002l\\033[?1003h", and a
+terminal without 1003 applied the disable, ignored the set, and lost the mouse
+mid-flight. Once the ladder exists that disable is only redundant, not harmful,
+because the ladder re-establishes state from the bottom on every change.
+Dropping it is a tidy-up rather than a second fix - upstream PR #1405 keeps it
+and works just as well.
 
 Upstream: https://github.com/mobile-shell/mosh/issues/1364
 
