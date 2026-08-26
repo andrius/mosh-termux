@@ -114,7 +114,7 @@ client, so **only the phone needs the patched binary**. Servers keep stock
 On the device:
 
 ```bash
-git clone <this repo> ~/mosh-termux
+git clone https://github.com/andrius/mosh-termux ~/mosh-termux
 cd ~/mosh-termux
 bash build.sh --install
 ```
@@ -160,3 +160,9 @@ Termux 0.118.3, against a stock `mosh-server` 1.4.0.
 - Workaround without building anything: run zellij inside tmux with
   `set -g mouse on`. tmux enables 1002 first, Termux latches it, and the
   session keeps its mouse.
+
+## Licence
+
+The patch modifies [mosh](https://github.com/mobile-shell/mosh), which is
+GPL-3.0-or-later, so it carries the same terms. The scripts in this repository
+are offered under GPL-3.0-or-later as well, to keep the whole thing one licence.
