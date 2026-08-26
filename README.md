@@ -9,6 +9,22 @@ when mosh is used from Termux on Android.
 Upstream bug: [mosh#1364](https://github.com/mobile-shell/mosh/issues/1364)
 (open since 2025-12-09).
 
+## Quick start
+
+Three commands on the device, then `mosh` behaves:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/andrius/mosh-termux/main/keys/mosh-termux.gpg \
+  -o $PREFIX/etc/apt/trusted.gpg.d/mosh-termux.gpg
+echo "deb [signed-by=$PREFIX/etc/apt/trusted.gpg.d/mosh-termux.gpg] https://raw.githubusercontent.com/andrius/mosh-termux/apt stable main" \
+  > $PREFIX/etc/apt/sources.list.d/mosh-termux.list
+pkg update && pkg install mosh
+```
+
+Signed repository, four Termux architectures, built by CI in the official Termux
+builder image. Details, the pin you probably also want, and the single-`.deb`
+route are further down. What follows first is why any of this is necessary.
+
 ## Symptom
 
 | Path | Mouse |
