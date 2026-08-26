@@ -147,6 +147,9 @@ and fails; patched prints `1000h 1002h 1003h 1006h` and passes.
 Then confirm by hand, since no automated check can tap a screen: open a mosh
 session, start zellij, and tap a pane.
 
+Confirmed on hardware 2026-08-26: Galaxy Fold7, Android 16, aarch64,
+Termux 0.118.3, against a stock `mosh-server` 1.4.0.
+
 ## Notes
 
 - The Termux `mosh` package is stock upstream 1.4.0. Its only two patches
