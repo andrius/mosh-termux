@@ -118,12 +118,18 @@ Termux builder image and publishes a signed apt repository, so nothing has to be
 compiled on the phone:
 
 ```bash
-curl -fsSL https://andrius.mobi/mosh-termux/mosh-termux.gpg \
+curl -fsSL https://raw.githubusercontent.com/andrius/mosh-termux/main/keys/mosh-termux.gpg \
   -o $PREFIX/etc/apt/trusted.gpg.d/mosh-termux.gpg
-echo "deb [signed-by=$PREFIX/etc/apt/trusted.gpg.d/mosh-termux.gpg] https://andrius.mobi/mosh-termux stable main" \
+echo "deb [signed-by=$PREFIX/etc/apt/trusted.gpg.d/mosh-termux.gpg] https://raw.githubusercontent.com/andrius/mosh-termux/apt stable main" \
   > $PREFIX/etc/apt/sources.list.d/mosh-termux.list
 pkg update && pkg install mosh
 ```
+
+The repository lives on the `apt` branch and is served by
+raw.githubusercontent.com, not GitHub Pages. That branch is force-replaced on
+every tag, so it only ever carries the current packages. raw caches for a few
+minutes, so right after a release `pkg update` can briefly complain about a hash
+mismatch; wait and repeat.
 
 The repository is signed. Key fingerprint:
 
@@ -139,7 +145,7 @@ package wins again and the fix disappears without a word. To stop that:
 ```bash
 cat > $PREFIX/etc/apt/preferences.d/mosh-termux <<'EOF'
 Package: mosh mosh-perl
-Pin: origin andrius.mobi
+Pin: release o=mosh-termux
 Pin-Priority: 1001
 EOF
 ```

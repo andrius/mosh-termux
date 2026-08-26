@@ -114,17 +114,16 @@ jobs:
           if-no-files-found: error
 
   apt-repo:
-    name: publish apt repo to pages
+    # Served straight out of an orphan branch via raw.githubusercontent.com.
+    # GitHub Pages is not an option here: the account has a user-level custom
+    # domain that no longer points at Pages, so every Pages URL for this repo
+    # redirects somewhere else.
+    name: publish apt repo
     if: startsWith(github.ref, 'refs/tags/v')
     needs: [behaviour, packages]
     runs-on: ubuntu-latest
     permissions:
-      contents: read
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -166,7 +165,7 @@ jobs:
           APT_SIGN_KEY: ${{ secrets.APT_SIGN_KEY }}
         working-directory: repo
         run: |
-          export GNUPGHOME=$(mktemp -d)
+          GNUPGHOME=$(mktemp -d); export GNUPGHOME
           chmod 700 "$GNUPGHOME"
           printf '%s' "$APT_SIGN_KEY" | gpg --batch --quiet --import
           gpg --batch --yes --clearsign -o dists/stable/InRelease dists/stable/Release
@@ -175,33 +174,26 @@ jobs:
           rm -rf "$GNUPGHOME"
           test -s dists/stable/InRelease
 
-      - name: landing page and key
+      - name: push the apt branch
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          touch repo/.nojekyll
           cp keys/mosh-termux.gpg repo/
-          cat > repo/index.html <<'HTML'
-          <!doctype html><meta charset=utf-8>
-          <title>mosh-termux apt repo</title>
-          <style>body{font:16px/1.5 system-ui,sans-serif;max-width:46em;margin:3em auto;padding:0 1em}
-          pre{background:#f4f4f4;padding:1em;overflow-x:auto}</style>
-          <h1>mosh-termux</h1>
-          <p>Termux apt repository carrying a patched <code>mosh</code> that restores
-          mouse reporting for crossterm TUIs. Source and rationale:
-          <a href="https://github.com/andrius/mosh-termux">github.com/andrius/mosh-termux</a>.</p>
-          <pre>curl -fsSL https://andrius.mobi/mosh-termux/mosh-termux.gpg \
-            -o $PREFIX/etc/apt/trusted.gpg.d/mosh-termux.gpg
-          echo "deb [signed-by=$PREFIX/etc/apt/trusted.gpg.d/mosh-termux.gpg] \
-            https://andrius.mobi/mosh-termux stable main" \
-            > $PREFIX/etc/apt/sources.list.d/mosh-termux.list
-          pkg update &amp;&amp; pkg install mosh</pre>
-          HTML
-
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: repo
-      - id: deploy
-        uses: actions/deploy-pages@v4
+          cat > repo/README.md <<EOF
+          Generated apt repository for Termux, published by CI from
+          https://github.com/${GITHUB_REPOSITORY} at ${GITHUB_REF_NAME}.
+          Do not commit here by hand; this branch is force-replaced on every tag.
+          EOF
+          cd repo
+          git init -q -b apt
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "apt repo for ${GITHUB_REF_NAME}"
+          # Orphan every time: the branch carries only the current packages, so
+          # the repository does not grow a .deb per release forever.
+          git push -q --force \
+            "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}" apt
 
   release:
     name: publish release
@@ -226,13 +218,13 @@ jobs:
             --title "${GITHUB_REF_NAME}" \
             --notes "Patched mosh for Termux: restores mouse reporting for crossterm TUIs.
 
-          The easy path is the apt repo, which keeps itself updated:
-          <https://andrius.mobi/mosh-termux>
+          The easy path is the apt repository, which keeps itself updated. See
+          the README for the three commands that add it.
 
-          Or grab the .deb for your architecture below and \`dpkg -i\` it.
+          Or grab the .deb for your architecture below and \`dpkg -i\` it;
           \`dpkg --print-architecture\` tells you which one.
 
           Then prove it from a real Termux session with \`bash verify.sh\`, which
           must print \`1000h 1002h 1003h 1006h\` and PASS.
 
-          See README.md for what the patch does and why. Upstream: mosh#1364."
+          Upstream: mosh#1364."
