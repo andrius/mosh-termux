@@ -16,7 +16,13 @@ burst="\033[?1000h\033[?1002h\033[?1003h\033[?1015h\033[?1006h"
 info=$(mosh-server new -i 127.0.0.1 -c 200 -- sh -c "printf '${burst}'; sleep 4" 2>&1)
 port=$(awk "/MOSH CONNECT/{print \$3}" <<<"$info")
 key=$(awk  "/MOSH CONNECT/{print \$4}" <<<"$info")
-[ -n "$port" ] || { echo "mosh-server did not start:"; echo "$info"; exit 1; }
+# Redact the session key: this output is what people paste into bug reports,
+# and the key is live for as long as the server waits for a connection.
+[ -n "$port" ] || {
+    echo "mosh-server did not start:"
+    sed "s/\(MOSH CONNECT [0-9]*\).*/\1 <key redacted>/" <<<"$info"
+    exit 1
+}
 
 cap=$(mktemp)
 MOSH_KEY="$key" script -q -c "$CLIENT 127.0.0.1 $port" "$cap" >/dev/null 2>&1

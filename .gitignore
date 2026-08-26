@@ -1,2 +1,6 @@
 mosh-*.tar.gz
 mosh-[0-9]*/
+
+# worktree-layout scratch symlink, never part of the project
+andrius-tmp
+.workspace
