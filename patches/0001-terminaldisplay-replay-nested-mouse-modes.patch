@@ -1,0 +1,46 @@
+Replay the nested mouse-reporting ladder instead of a single collapsed mode.
+
+mosh does not forward bytes, it re-renders terminal state. CSI_DECSM collapses
+the whole 9/1000/1001/1002/1003 class into one scalar, so when an application
+enables them together - crossterm EnableMouseCapture sends
+1000h 1002h 1003h 1015h 1006h in a single burst - only the last one survives
+into the frame and only 1003h reaches the client terminal.
+
+That redundancy is exactly the fallback terminals rely on. Termux implements
+1000, 1002 and 1006 but not 1003, so it drops the only mode mosh sends and
+mouse reporting is never enabled. Over plain ssh the full burst arrives and
+Termux latches 1002, which is why the mouse works there.
+
+Emitting the ladder weakest-first restores the fallback. 1000/1002/1003 share
+a single variable in xterm just as they do in mosh, so the last one still wins
+and conformant terminals see no change in behaviour.
+
+Dropping the explicit disable of the previous mode is part of the fix, not a
+simplification: on a mode change mosh sent e.g. "\\033[?1002l\\033[?1003h",
+which turned a working session mouse off mid-flight on any terminal without
+1003. The ladder re-establishes state from the bottom on every change, so the
+disable is redundant.
+
+Upstream: https://github.com/mobile-shell/mosh/issues/1364
+
+--- a/src/terminal/terminaldisplay.cc
++++ b/src/terminal/terminaldisplay.cc
+@@ -304,9 +304,15 @@
+       frame.append("\033[?1001l");
+       frame.append("\033[?1000l");
+     } else {
+-      if (frame.last_frame.ds.mouse_reporting_mode != DrawState::MOUSE_REPORTING_NONE) {
+-        snprintf(tmp, sizeof(tmp), "\033[?%dl", frame.last_frame.ds.mouse_reporting_mode);
+-        frame.append(tmp);
++      /* Replay the nested ladder weakest-first so a terminal that does not
++         implement the requested mode still latches the strongest one it does
++         know. The last mode still wins, so this is a no-op on terminals that
++         implement all of them. */
++      if (f.ds.mouse_reporting_mode > DrawState::MOUSE_REPORTING_VT220) {
++        frame.append("\033[?1000h");
++      }
++      if (f.ds.mouse_reporting_mode > DrawState::MOUSE_REPORTING_BTN_EVENT) {
++        frame.append("\033[?1002h");
+       }
+       snprintf(tmp, sizeof(tmp), "\033[?%dh", f.ds.mouse_reporting_mode);
+       frame.append(tmp);
