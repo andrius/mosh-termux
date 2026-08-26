@@ -20,7 +20,7 @@ key=$(awk  "/MOSH CONNECT/{print \$4}" <<<"$info")
 
 cap=$(mktemp)
 MOSH_KEY="$key" script -q -c "$CLIENT 127.0.0.1 $port" "$cap" >/dev/null 2>&1
-emitted=$(cat -v "$cap" | grep -o "\^\[\[?\(9\|10[0-9][0-9]\|1015\)h" | tr "\n" " ")
+emitted=$(cat -v "$cap" | grep -o "\^\[\[?\(9\|100[0-9]\|101[0-5]\)h" | tr "\n" " ")
 rm -f "$cap"
 
 echo "client       : $CLIENT"

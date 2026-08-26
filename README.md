@@ -84,6 +84,16 @@ was working loses it the moment something requests all-motion tracking.
 The input direction is not involved. SGR (`ESC[<0;10;5M`) and legacy X10
 (`ESC[M` plus three bytes) mouse reports both cross a mosh link byte for byte.
 
+After the patch, measured the same way on the same device:
+
+| Case | Termux receives | Result |
+|---|---|---|
+| zellij through mosh | `1000h 1002h 1003h 1006h` | works |
+| tmux, then a pane app asks for 1003 | `1000h 1002h 1006h` ... `1000h 1002h 1003h` | survives |
+
+The `1002l` that killed a live session is gone, and 1002 is now always latched
+before the mode Termux cannot use.
+
 ## The fix
 
 `patches/0001-terminaldisplay-replay-nested-mouse-modes.patch` changes
