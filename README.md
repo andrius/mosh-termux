@@ -111,26 +111,53 @@ The collapse happens on the server, but the information is recoverable on the
 client, so **only the phone needs the patched binary**. Servers keep stock
 `mosh-server`, the wire format is untouched, and there is no version skew.
 
-## Install a prebuilt package
+## Install from the apt repository
 
-Releases carry a full `mosh` `.deb` for every Termux architecture, built by CI
-in the official Termux builder image, so nothing has to be compiled on the
-phone:
+CI builds a real `mosh` package for every Termux architecture in the official
+Termux builder image and publishes a signed apt repository, so nothing has to be
+compiled on the phone:
 
 ```bash
-# on the device
-dpkg --print-architecture                       # aarch64, arm, x86_64 or i686
-curl -LO https://github.com/andrius/mosh-termux/releases/latest/download/mosh_1.4.0-17_aarch64.deb
-apt-mark unhold mosh 2>/dev/null || true
-dpkg -i ./mosh_1.4.0-17_aarch64.deb
-apt-mark hold mosh
+curl -fsSL https://andrius.mobi/mosh-termux/mosh-termux.gpg \
+  -o $PREFIX/etc/apt/trusted.gpg.d/mosh-termux.gpg
+echo "deb [signed-by=$PREFIX/etc/apt/trusted.gpg.d/mosh-termux.gpg] https://andrius.mobi/mosh-termux stable main" \
+  > $PREFIX/etc/apt/sources.list.d/mosh-termux.list
+pkg update && pkg install mosh
 ```
 
-The package deliberately keeps the upstream version string, so apt sees no
-version bump: use `dpkg -i`, not `pkg install`, and let the hold stop a later
-`pkg upgrade` from putting the stock build back. `mosh-perl_*.deb` in the same
-release is the optional perl `mosh` wrapper; you only need it if you already
-had `mosh-perl` installed.
+The repository is signed. Key fingerprint:
+
+```
+683C B53B C7FD A175 571D  D268 9D26 0699 36D0 F390
+```
+
+Packages carry a `.1` revision suffix on top of the official Termux revision, so
+apt sees an ordinary upgrade. The flip side: if Termux later ships a mosh
+revision newer than the one this repository was last built against, the stock
+package wins again and the fix disappears without a word. To stop that:
+
+```bash
+cat > $PREFIX/etc/apt/preferences.d/mosh-termux <<'EOF'
+Package: mosh mosh-perl
+Pin: origin andrius.mobi
+Pin-Priority: 1001
+EOF
+```
+
+The pin keeps you on this repository's mosh until it is rebuilt, so if it falls
+behind upstream Termux, open an issue.
+
+## Install a single .deb
+
+Every [release](https://github.com/andrius/mosh-termux/releases) attaches the
+same packages as plain files. `dpkg --print-architecture` tells you which one to
+take, and `mosh-perl_*.deb` is the optional perl wrapper, needed only if you
+already had `mosh-perl` installed:
+
+```bash
+curl -LO https://github.com/andrius/mosh-termux/releases/latest/download/mosh_<version>_<arch>.deb
+dpkg -i ./mosh_<version>_<arch>.deb
+```
 
 ## Build it yourself
 

@@ -10,6 +10,9 @@ on:
 permissions:
   contents: read
 
+env:
+  TERMUX_ARCHES: aarch64 arm i686 x86_64
+
 jobs:
   patch-applies:
     name: patch applies to upstream
@@ -78,17 +81,27 @@ jobs:
           fetch-depth: 1
 
       # termux_step_patch_package applies every *.patch in the package
-      # directory, so dropping ours in is the whole integration.
-      - name: graft the patch into the mosh package
+      # directory, so dropping ours in is the whole integration. The revision
+      # suffix is what makes apt see an upgrade over the official package;
+      # without it our build has an identical version string and is ignored.
+      - name: graft the patch and bump the revision
         run: |
           cp patches/*.patch termux-packages/packages/mosh/
-          ls -1 termux-packages/packages/mosh/
+          b=termux-packages/packages/mosh/build.sh
+          rev=$(sed -n 's/^TERMUX_PKG_REVISION=//p' "$b" | tr -d '"' | head -1)
+          rev=${rev:-0}
+          if grep -q '^TERMUX_PKG_REVISION=' "$b"; then
+            sed -i "s/^TERMUX_PKG_REVISION=.*/TERMUX_PKG_REVISION=${rev}.1/" "$b"
+          else
+            printf 'TERMUX_PKG_REVISION=%s\n' "${rev}.1" >> "$b"
+          fi
+          grep -E '^TERMUX_PKG_(VERSION|REVISION)=' "$b"
 
       - name: build
         working-directory: termux-packages
         run: ./scripts/run-docker.sh ./build-package.sh -a ${{ matrix.arch }} -I mosh
 
-      - name: name the artifacts
+      - name: collect
         run: |
           mkdir -p debs
           find termux-packages/output -name "*.deb" -exec cp {} debs/ \;
@@ -99,6 +112,96 @@ jobs:
           name: deb-${{ matrix.arch }}
           path: debs/*.deb
           if-no-files-found: error
+
+  apt-repo:
+    name: publish apt repo to pages
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [behaviour, packages]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: deb-*
+          path: debs
+          merge-multiple: true
+      - run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends apt-utils
+
+      - name: lay out the pool
+        run: |
+          mkdir -p repo/dists/stable/main
+          for arch in $TERMUX_ARCHES; do
+            mkdir -p "repo/pool/main/$arch" "repo/dists/stable/main/binary-$arch"
+            # Termux uses its own architecture names, which are exactly the
+            # suffixes termux-packages puts on the .deb files.
+            find debs -name "*_${arch}.deb" -exec cp {} "repo/pool/main/$arch/" \;
+            ls "repo/pool/main/$arch"
+          done
+
+      - name: index
+        working-directory: repo
+        run: |
+          for arch in $TERMUX_ARCHES; do
+            apt-ftparchive packages "pool/main/$arch" > "dists/stable/main/binary-$arch/Packages"
+            gzip -9nk "dists/stable/main/binary-$arch/Packages"
+          done
+          apt-ftparchive \
+            -o APT::FTPArchive::Release::Origin=mosh-termux \
+            -o APT::FTPArchive::Release::Label=mosh-termux \
+            -o APT::FTPArchive::Release::Suite=stable \
+            -o APT::FTPArchive::Release::Codename=stable \
+            -o APT::FTPArchive::Release::Components=main \
+            -o APT::FTPArchive::Release::Architectures="$TERMUX_ARCHES" \
+            release dists/stable > dists/stable/Release
+
+      - name: sign
+        env:
+          APT_SIGN_KEY: ${{ secrets.APT_SIGN_KEY }}
+        working-directory: repo
+        run: |
+          export GNUPGHOME=$(mktemp -d)
+          chmod 700 "$GNUPGHOME"
+          printf '%s' "$APT_SIGN_KEY" | gpg --batch --quiet --import
+          gpg --batch --yes --clearsign -o dists/stable/InRelease dists/stable/Release
+          gpg --batch --yes --detach-sign --armor -o dists/stable/Release.gpg dists/stable/Release
+          gpgconf --kill all
+          rm -rf "$GNUPGHOME"
+          test -s dists/stable/InRelease
+
+      - name: landing page and key
+        run: |
+          touch repo/.nojekyll
+          cp keys/mosh-termux.gpg repo/
+          cat > repo/index.html <<'HTML'
+          <!doctype html><meta charset=utf-8>
+          <title>mosh-termux apt repo</title>
+          <style>body{font:16px/1.5 system-ui,sans-serif;max-width:46em;margin:3em auto;padding:0 1em}
+          pre{background:#f4f4f4;padding:1em;overflow-x:auto}</style>
+          <h1>mosh-termux</h1>
+          <p>Termux apt repository carrying a patched <code>mosh</code> that restores
+          mouse reporting for crossterm TUIs. Source and rationale:
+          <a href="https://github.com/andrius/mosh-termux">github.com/andrius/mosh-termux</a>.</p>
+          <pre>curl -fsSL https://andrius.mobi/mosh-termux/mosh-termux.gpg \
+            -o $PREFIX/etc/apt/trusted.gpg.d/mosh-termux.gpg
+          echo "deb [signed-by=$PREFIX/etc/apt/trusted.gpg.d/mosh-termux.gpg] \
+            https://andrius.mobi/mosh-termux stable main" \
+            > $PREFIX/etc/apt/sources.list.d/mosh-termux.list
+          pkg update &amp;&amp; pkg install mosh</pre>
+          HTML
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: repo
+      - id: deploy
+        uses: actions/deploy-pages@v4
 
   release:
     name: publish release
@@ -123,12 +226,11 @@ jobs:
             --title "${GITHUB_REF_NAME}" \
             --notes "Patched mosh for Termux: restores mouse reporting for crossterm TUIs.
 
-          Install on the device (dpkg, not pkg: the version string is unchanged
-          on purpose, so apt sees nothing to upgrade):
+          The easy path is the apt repo, which keeps itself updated:
+          <https://andrius.mobi/mosh-termux>
 
-              apt-mark unhold mosh 2>/dev/null || true
-              dpkg -i ./mosh_1.4.0-17_\$(dpkg --print-architecture).deb
-              apt-mark hold mosh
+          Or grab the .deb for your architecture below and \`dpkg -i\` it.
+          \`dpkg --print-architecture\` tells you which one.
 
           Then prove it from a real Termux session with \`bash verify.sh\`, which
           must print \`1000h 1002h 1003h 1006h\` and PASS.
