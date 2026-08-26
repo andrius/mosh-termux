@@ -114,16 +114,19 @@ jobs:
           if-no-files-found: error
 
   apt-repo:
-    # Served straight out of an orphan branch via raw.githubusercontent.com.
-    # GitHub Pages is not an option here: the account has a user-level custom
-    # domain that no longer points at Pages, so every Pages URL for this repo
-    # redirects somewhere else.
+    # Both the apt repository and its landing page are served from Pages, so
+    # there is exactly one URL to document and one thing to keep current.
     name: publish apt repo
     if: startsWith(github.ref, 'refs/tags/v')
     needs: [behaviour, packages]
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -174,26 +177,50 @@ jobs:
           rm -rf "$GNUPGHOME"
           test -s dists/stable/InRelease
 
-      - name: push the apt branch
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: landing page and key
         run: |
+          # Pages would otherwise run the tree through Jekyll and drop the
+          # dists/ and pool/ layout apt depends on.
+          touch repo/.nojekyll
           cp keys/mosh-termux.gpg repo/
-          cat > repo/README.md <<EOF
-          Generated apt repository for Termux, published by CI from
-          https://github.com/${GITHUB_REPOSITORY} at ${GITHUB_REF_NAME}.
-          Do not commit here by hand; this branch is force-replaced on every tag.
-          EOF
-          cd repo
-          git init -q -b apt
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git commit -q -m "apt repo for ${GITHUB_REF_NAME}"
-          # Orphan every time: the branch carries only the current packages, so
-          # the repository does not grow a .deb per release forever.
-          git push -q --force \
-            "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}" apt
+          cat > repo/index.html <<'HTML'
+          <!doctype html><meta charset=utf-8>
+          <meta name=viewport content="width=device-width,initial-scale=1">
+          <title>mosh-termux apt repo</title>
+          <style>
+          :root{color-scheme:light dark}
+          body{font:16px/1.6 system-ui,sans-serif;max-width:44em;margin:3em auto;padding:0 1.2em}
+          pre{background:#8881;padding:1em;overflow-x:auto;border-radius:6px}
+          code{font-size:.95em}
+          </style>
+          <h1>mosh-termux</h1>
+          <p>A Termux apt repository carrying a patched <code>mosh</code> that restores
+          mouse reporting for crossterm TUIs such as zellij. Over plain ssh the mouse
+          works; over stock mosh it does not, because mosh collapses the mouse-mode
+          request burst to a single mode that Termux does not implement.</p>
+          <p>Source, measurements and rationale:
+          <a href="https://github.com/andrius/mosh-termux">github.com/andrius/mosh-termux</a>.
+          Upstream bug:
+          <a href="https://github.com/mobile-shell/mosh/issues/1364">mosh#1364</a>.</p>
+          <h2>Install</h2>
+          <pre>curl -fsSL https://andrius.github.io/mosh-termux/mosh-termux.gpg \
+            -o $PREFIX/etc/apt/trusted.gpg.d/mosh-termux.gpg
+          echo "deb [signed-by=$PREFIX/etc/apt/trusted.gpg.d/mosh-termux.gpg] \
+            https://andrius.github.io/mosh-termux stable main" \
+            &gt; $PREFIX/etc/apt/sources.list.d/mosh-termux.list
+          pkg update &amp;&amp; pkg install mosh</pre>
+          <p>Signed with key
+          <code>683C B53B C7FD A175 571D D268 9D26 0699 36D0 F390</code>,
+          built for aarch64, arm, i686 and x86_64 in the official Termux builder
+          image.</p>
+          HTML
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: repo
+      - id: deploy
+        uses: actions/deploy-pages@v4
 
   release:
     name: publish release

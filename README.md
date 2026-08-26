@@ -14,9 +14,9 @@ Upstream bug: [mosh#1364](https://github.com/mobile-shell/mosh/issues/1364)
 Three commands on the device, then `mosh` behaves:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/andrius/mosh-termux/main/keys/mosh-termux.gpg \
+curl -fsSL https://andrius.github.io/mosh-termux/mosh-termux.gpg \
   -o $PREFIX/etc/apt/trusted.gpg.d/mosh-termux.gpg
-echo "deb [signed-by=$PREFIX/etc/apt/trusted.gpg.d/mosh-termux.gpg] https://raw.githubusercontent.com/andrius/mosh-termux/apt stable main" \
+echo "deb [signed-by=$PREFIX/etc/apt/trusted.gpg.d/mosh-termux.gpg] https://andrius.github.io/mosh-termux stable main" \
   > $PREFIX/etc/apt/sources.list.d/mosh-termux.list
 pkg update && pkg install mosh
 ```
@@ -134,18 +134,16 @@ Termux builder image and publishes a signed apt repository, so nothing has to be
 compiled on the phone:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/andrius/mosh-termux/main/keys/mosh-termux.gpg \
+curl -fsSL https://andrius.github.io/mosh-termux/mosh-termux.gpg \
   -o $PREFIX/etc/apt/trusted.gpg.d/mosh-termux.gpg
-echo "deb [signed-by=$PREFIX/etc/apt/trusted.gpg.d/mosh-termux.gpg] https://raw.githubusercontent.com/andrius/mosh-termux/apt stable main" \
+echo "deb [signed-by=$PREFIX/etc/apt/trusted.gpg.d/mosh-termux.gpg] https://andrius.github.io/mosh-termux stable main" \
   > $PREFIX/etc/apt/sources.list.d/mosh-termux.list
 pkg update && pkg install mosh
 ```
 
-The repository lives on the `apt` branch and is served by
-raw.githubusercontent.com, not GitHub Pages. That branch is force-replaced on
-every tag, so it only ever carries the current packages. raw caches for a few
-minutes, so right after a release `pkg update` can briefly complain about a hash
-mismatch; wait and repeat.
+The repository and its landing page are published to GitHub Pages by CI on every
+`v*` tag, and each deploy replaces the previous one, so the index never carries
+packages that are no longer there.
 
 The repository is signed. Key fingerprint:
 
