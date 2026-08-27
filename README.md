@@ -78,11 +78,10 @@ five requests arrive verbatim, Termux latches 1002, and the mouse works. On
 macOS and Linux the terminal implements 1003, so mosh's normalised output is
 fine. Termux plus mosh is the only combination where both halves misalign.
 
-Formally the defect is in Termux - 1003 has been in xterm since the 1990s, and
-it is still unimplemented on `termux-app` master, so waiting for a Termux
-release does not help. But mosh is the cheaper place to fix it, and mosh is
-also doing something actively harmful (see below), so that is what this repo
-patches.
+Formally the defect is in Termux: 1003 has been in xterm since the 1990s, and
+`termux-app` master still drops it. mosh is simply the cheaper place to work
+around it, which is what this repository does. Both projects now have a fix in
+flight - see [Relationship to upstream](#relationship-to-upstream).
 
 ## Measurements
 
@@ -134,11 +133,39 @@ state from the bottom.
 
 ### Relationship to upstream
 
-[mosh#1405](https://github.com/mobile-shell/mosh/pull/1405), open since
-2026-08-22, fixes this the same way - it announces the lower modes alongside the
-stored one and keeps the disable. Its thresholds differ from this patch only for
-mode 1001, which nothing uses. When it lands and reaches Termux, this repository
-has no reason to exist; until then it is the same fix, shipped.
+Three projects are fixing this from three directions. All were open as of
+2026-08-27, none reviewed:
+
+| Where | What | Effect if it lands |
+|---|---|---|
+| [mosh#1405](https://github.com/mobile-shell/mosh/pull/1405) | announce the lower modes cumulatively | same fix as this patch, upstream |
+| [termux-app#5281](https://github.com/termux/termux-app/pull/5281) | implement DECSET 1003 in the terminal emulator | fixes the root cause, for every app, not just mosh |
+| [zellij#4543](https://github.com/zellij-org/zellij/issues/4543) | option not to request 1003 | works around it for one app |
+
+`termux-app#5281` (with its issue
+[#5280](https://github.com/termux/termux-app/issues/5280)) is the real fix:
+1003 has been in xterm since the 1990s, and Termux dropping it silently is what
+breaks Claude Code's fullscreen mode, Vim's `balloonevalterm` and Bubble Tea
+TUIs as well, entirely independently of mosh.
+
+`mosh#1405` is the same change as this patch, reached independently. It keeps
+the explicit disable and gates on `>= BTN_EVENT` / `>= ANY_EVENT` rather than
+`> VT220` / `> BTN_EVENT`; identical behaviour for every mode anything uses,
+diverging only on 1001.
+
+**When to retire this repository:** as soon as either fix reaches a Termux
+release - a `mosh` package built from a mosh that carries #1405, or a Termux app
+that carries #5281. At that point stop publishing here and drop the pin:
+
+```bash
+rm $PREFIX/etc/apt/preferences.d/mosh-termux \
+   $PREFIX/etc/apt/sources.list.d/mosh-termux.list \
+   $PREFIX/etc/apt/trusted.gpg.d/mosh-termux.gpg
+pkg update && apt install --allow-downgrades mosh
+```
+
+Merged upstream is not the same as shipped: a new mosh still has to reach
+termux-packages, and a new app still has to reach F-Droid.
 
 ## Install from the apt repository
 
