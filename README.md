@@ -11,7 +11,11 @@ Upstream bug: [mosh#1364](https://github.com/mobile-shell/mosh/issues/1364)
 
 ## Quick start
 
-Three commands on the device, then `mosh` behaves:
+These commands require **APT-based Termux**. On pacman-based Termux, use
+[Build it yourself](#build-it-yourself). `pkg` supports both package managers,
+but pacman ignores the APT repository below and installs the stock mosh package.
+
+On APT-based Termux:
 
 ```bash
 curl -fsSL https://andrius.github.io/mosh-termux/mosh-termux.gpg \
@@ -169,6 +173,8 @@ termux-packages, and a new app still has to reach F-Droid.
 
 ## Install from the apt repository
 
+This repository is for APT-based Termux only. It does not provide pacman packages.
+
 CI builds a real `mosh` package for every Termux architecture in the official
 Termux builder image and publishes a signed apt repository, so nothing has to be
 compiled on the phone:
@@ -209,6 +215,8 @@ behind upstream Termux, open an issue.
 
 ## Install a single .deb
 
+This installation method also requires APT/dpkg-based Termux.
+
 Every [release](https://github.com/andrius/mosh-termux/releases) attaches the
 same packages as plain files. `dpkg --print-architecture` tells you which one to
 take, and `mosh-perl_*.deb` is the optional perl wrapper, needed only if you
@@ -224,22 +232,54 @@ dpkg -i ./mosh_<version>_<arch>.deb
 On the device:
 
 ```bash
-git clone https://github.com/andrius/mosh-termux ~/mosh-termux
-cd ~/mosh-termux
+git clone https://github.com/andrius/mosh-termux ~/tools/mosh-termux
+cd ~/tools/mosh-termux
 bash build.sh --install
 ```
 
 `build.sh` fetches the upstream `mosh-1.4.0` release tarball, checks its
-sha256, applies the patch and builds. `--install` keeps the stock binary at
+sha256, applies the patch and builds against the device's installed libraries.
+It checks that the client starts before installing it.
+
+On APT-based Termux, `--install` keeps the stock binary at
 `$PREFIX/bin/mosh-client.orig`, installs the patched one, and runs
 `apt-mark hold mosh` so an upgrade cannot silently replace it.
 
-To undo:
+To undo the APT installation:
 
 ```bash
 apt-mark unhold mosh
 apt install --reinstall mosh
 ```
+
+On pacman-based Termux, the script runs `pacman -Syu` with the build dependencies
+and mosh. This upgrades installed packages as well, avoiding a partial upgrade
+where a new executable loads incompatible old libraries. Run it from a local
+Termux session.
+
+`--install` puts the patched client at `~/tools/mosh-termux/bin/mosh-client`,
+leaving the pacman-owned binary unchanged. Add this to your shell profile and
+run it in your current shell before reconnecting:
+
+```bash
+export PATH="$HOME/tools/mosh-termux/bin:$PATH"
+```
+
+The normal `mosh user@host` command will then select the patched client. To undo,
+remove that PATH entry from your profile and open a new shell. Library upgrades
+can still require rebuilding the private client with `bash build.sh --install`.
+
+### Missing library symbols
+
+If `mosh-client` reports `CANNOT LINK EXECUTABLE` and a missing protobuf or
+Abseil symbol, check the executable itself with `mosh-client --version`.
+`mosh --version` may succeed because it only runs the launcher.
+
+Update the installed packages together (`pkg upgrade`), then check the client
+again. If a prebuilt patched client still fails, build it on the device against
+the updated libraries. Do not downgrade a shared library independently of its
+consumers. A similar startup failure is reported in [#1](https://github.com/andrius/mosh-termux/issues/1),
+but that report alone does not establish which package needs updating.
 
 ## Verify
 

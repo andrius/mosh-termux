@@ -14,6 +14,14 @@ env:
   TERMUX_ARCHES: aarch64 arm i686 x86_64
 
 jobs:
+  installation:
+    name: Termux installation paths
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash -n build.sh
+      - run: python3 -m unittest discover -s tests -v
+
   patch-applies:
     name: patch applies to upstream
     runs-on: ubuntu-latest
@@ -203,6 +211,9 @@ jobs:
           Upstream bug:
           <a href="https://github.com/mobile-shell/mosh/issues/1364">mosh#1364</a>.</p>
           <h2>Install</h2>
+          <p>These commands require APT-based Termux. For pacman-based Termux,
+          use the source build instructions in the README. Adding an APT
+          repository does not change which packages pacman installs.</p>
           <pre>curl -fsSL https://andrius.github.io/mosh-termux/mosh-termux.gpg \
             -o $PREFIX/etc/apt/trusted.gpg.d/mosh-termux.gpg
           echo "deb [signed-by=$PREFIX/etc/apt/trusted.gpg.d/mosh-termux.gpg] \

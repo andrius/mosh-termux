@@ -2,7 +2,7 @@
 # Build a patched mosh-client.
 #
 #   bash build.sh            # build only
-#   bash build.sh --install  # build, then replace the installed mosh-client
+#   bash build.sh --install  # build, then install for the Termux package manager
 #
 # Runs both on a Termux device and on an ordinary Linux box. On Termux it
 # installs its own build dependencies; elsewhere it expects them to be present,
@@ -20,9 +20,26 @@ mkdir -p "$work"
 
 if command -v pkg >/dev/null 2>&1 && [ -n "${PREFIX:-}" ]; then
     termux=yes
+    if [ -f "$PREFIX/bin/termux-setup-package-manager" ]; then
+        . "$PREFIX/bin/termux-setup-package-manager"
+    fi
+    package_manager=${TERMUX_APP_PACKAGE_MANAGER:-apt}
     echo "==> dependencies (Termux)"
-    pkg install -y build-essential autoconf automake libtool pkg-config \
-        protobuf openssl ncurses abseil-cpp perl >/dev/null
+    case "$package_manager" in
+        apt)
+            pkg install -y build-essential autoconf automake libtool pkg-config \
+                protobuf openssl ncurses abseil-cpp perl >/dev/null
+            ;;
+        pacman)
+            # Synchronize libraries with their consumers before compiling.
+            pacman -Syu --needed --noconfirm clang make autoconf automake \
+                libtool pkg-config protobuf openssl ncurses abseil-cpp perl mosh >/dev/null
+            ;;
+        *)
+            echo "Unsupported Termux package manager: $package_manager" >&2
+            exit 1
+            ;;
+    esac
 else
     termux=no
     echo "==> not Termux, assuming build dependencies are installed"
@@ -45,6 +62,7 @@ echo "==> configure"
 echo "==> make"
 make -j"$(nproc)" >/dev/null
 built="$PWD/src/frontend/mosh-client"
+"$built" --version >/dev/null
 echo "built: $built"
 
 if [ "${1:-}" = "--install" ]; then
@@ -53,6 +71,16 @@ if [ "${1:-}" = "--install" ]; then
         exit 1
     fi
     echo "==> installing"
+    if [ "$package_manager" = pacman ]; then
+        client_dir="$HOME/tools/mosh-termux/bin"
+        mkdir -p "$client_dir"
+        install -m 0755 "$built" "$client_dir/mosh-client.new"
+        mv "$client_dir/mosh-client.new" "$client_dir/mosh-client"
+        echo "installed: $client_dir/mosh-client"
+        echo 'Add to your shell profile: export PATH="$HOME/tools/mosh-termux/bin:$PATH"'
+        echo "The packaged client is unchanged. Rebuild if library upgrades break this client."
+        exit 0
+    fi
     [ -f "$PREFIX/bin/mosh-client.orig" ] || cp -a "$PREFIX/bin/mosh-client" "$PREFIX/bin/mosh-client.orig"
     install -m 0755 "$built" "$PREFIX/bin/mosh-client"
     apt-mark hold mosh
