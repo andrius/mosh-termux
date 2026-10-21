@@ -28,7 +28,7 @@ jobs:
           rev=$(sed -n 's/^TERMUX_PKG_REVISION=//p' <<<"$b" | tr -d '"' | head -1)
           want="${ver}-${rev:-0}.1"
           echo "official recipe -> we should ship mosh_${want}"
-          have=$(gh release view --json assets --jq '.assets[].name' 2>/dev/null | grep -m1 '_aarch64.deb' || true)
+          have=$(gh release view --json assets --jq '.assets[].name' 2>/dev/null | grep -m1 '^mosh_.*_aarch64.deb' || true)
           echo "latest release asset: ${have:-none}"
           if [ "$have" = "mosh_${want}_aarch64.deb" ]; then
             echo "up to date"; exit 0
